@@ -10,6 +10,7 @@
 % trim_l(List_String)
 % htmlspecialchars(List_String)
 % bb_parser(BB_Code) % list_string
+% bb_delete(BB_Code) % list_string
 % getbbfont(Font)
 % getbbsize(Size)
 % getbbcolor(HEX_Color)
@@ -868,6 +869,132 @@ bb_convert3_img(4, _, Params, Url) ->
   [$w,$i,$d,$t,$h|Width] = Width0,
   [$h,$e,$i,$g,$h,$t|Height] = Height0,
   {ok, [ <<"<img src=\"">>, Url, <<"\" width=\"">>, erlang:list_to_binary(Width), <<"\" height=\"">>, erlang:list_to_binary(Height), <<"\">">> ]}.
+
+
+bb_delete(BB_Code) ->
+  BB_Code3 = unicode:characters_to_list(?MODULE:htmlspecialchars( ?MODULE:trim_l(BB_Code) ), utf8),
+  ?MODULE:bb_delete2(BB_Code3, [], "").
+
+%bb_delete2(BB_Code, Active_BBs, Acc) ->
+bb_delete2([], _, Acc) -> lists:reverse(Acc);
+bb_delete2("[code]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/code]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[quote]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/quote]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[b]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/b]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[i]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/i]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[u]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/u]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[s]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/s]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[sub]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/sub]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[sup]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/sup]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[left]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/left]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[center]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/center]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[right]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/right]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[justify]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/justify]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[table]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/table]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[tr]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/tr]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[td]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/td]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[rtl]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/rtl]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[ltr]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/ltr]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[ul]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/ul]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[ol]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/ol]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[li]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/li]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[hr]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":)" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":angel:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":angry:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("8-)" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":&#39;(" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":ermm:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":D" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("&lt;3" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":(" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":0" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":P" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(";)" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":alien:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":blink:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":blush:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":cheerful:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":devil:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":dizzy:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":getlost:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":happy:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":kissing:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":ninja:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":pinch:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":pouty:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":sick:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":sideways:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":silly:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":sleeping:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":unsure:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":woot:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":wassat:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+
+bb_delete2("[/font]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/size]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/color]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/img]" ++ T, [img1|Active_BBs], Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/email]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/url]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/youtube]" ++ T, [youtube|Active_BBs], Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+
+bb_delete2("[font=" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [font|Active_BBs], Acc);
+bb_delete2("[size=" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [size|Active_BBs], Acc);
+bb_delete2("[color=" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [color|Active_BBs], Acc);
+bb_delete2("[img]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [img1|Active_BBs], Acc); % img1 === delete chars while not "[/img]"
+bb_delete2("[img" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [img2|Active_BBs], Acc); % img2 === delete chars while not "]" (beginning img tag ends)
+bb_delete2("[email=" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [email|Active_BBs], Acc);
+bb_delete2("[url=" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [url|Active_BBs], Acc);
+bb_delete2("[youtube]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [youtube|Active_BBs], Acc);
+
+bb_delete2("]" ++ T, [H|Active_BBs], Acc) when Active_BBs =/= [] ->
+  case H of
+    font -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
+    size -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
+    color -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
+    img2 -> ?MODULE:bb_delete2(T, [img1|erlang:tl(Active_BBs)], Acc);
+    email -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
+    url -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
+    youtube -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
+    _ -> ?MODULE:bb_delete2(T, Active_BBs, [H|Acc])
+  end;
+
+bb_delete2([H|T], [], Acc) -> ?MODULE:bb_delete2(T, [], [H|Acc]);
+bb_delete2([H|T], [H2|_]=Active_BBs, Acc) ->
+  case H2 of
+    font -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+    size -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+    color -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+    img1 -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+    img2 -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+    email -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+    url -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+    youtube -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+    _ -> ?MODULE:bb_delete2(T, Active_BBs, [H|Acc])
+  end.
+
+bb_delete3(T, [], Acc) -> ?MODULE:bb_delete2(T, [], Acc);
+bb_delete3(T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, erlang:tl(Active_BBs), Acc).
 
 
 %getbbfont(String)

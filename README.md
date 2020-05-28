@@ -10,3 +10,8 @@ use
 BB_Post3 = bb2html:bb_parser(BB_Post), % here (in BB_Post var) we have list string with bbcodes-text 
 unicode:characters_to_binary(BB_Post3 ,utf8) % here we have binary
 ```
+
+maybe you need text without bb and html for fulltext indexes for search tasks:
+```
+bb2html:bb_delete(BB_Code)
+```
