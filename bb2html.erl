@@ -754,8 +754,8 @@ bb_convert([{color, close}|T], Acc) ->
   ?MODULE:bb_convert(T, [ <<"</span>">> |Acc]);
 
 bb_convert([{color, open, Params}|T], Acc) ->
-  [_H|Params2] = Params,
-  Z = [ <<"<span class=\"bbcolor_">>, ?MODULE:getbbcolor( lists:reverse(Params2) ), <<"\">">> ],
+  %[_H|Params2] = Params,
+  Z = [ <<"<span class=\"bbcolor_">>, ?MODULE:getbbcolor( lists:reverse(Params) ), <<"\">">> ],
   ?MODULE:bb_convert(T, [ Z |Acc]);
 
 bb_convert([{email, close}|T], Acc) ->
