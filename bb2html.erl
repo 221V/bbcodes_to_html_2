@@ -764,7 +764,7 @@ bb_convert([{color, open, Params}|T], Acc) ->
 bb_convert([{email, close}|T], Acc) ->
   ?MODULE:bb_convert(T, [ <<"</a>">> |Acc]);
 
-bb_convert([{color, open, Params}|T], Acc) ->
+bb_convert([{email, open, Params}|T], Acc) ->
   [_H|Params2] = Params,
   Z = [ <<"<a href=\"mailto:">>, lists:reverse(Params2), <<"\">">> ],
   ?MODULE:bb_convert(T, [ Z |Acc]);
