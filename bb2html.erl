@@ -1,5 +1,14 @@
 -module(bb2html).
--compile([export_all, nowarn_export_all]).
+
+-export([
+  trim/1,
+  trim_l/1,
+  htmlspecialchars/1,
+  htmlspecialchars/2,
+  
+  bb_parser/1,
+  bb_delete/1
+]).
 
 % bb codes to html parser module
 
@@ -9,8 +18,10 @@
 % trim(Binary)
 % trim_l(List_String)
 % htmlspecialchars(List_String)
+
 % bb_parser(BB_Code) % list_string
 % bb_delete(BB_Code) % list_string
+
 % getbbfont(Font)
 % getbbsize(Size)
 % getbbcolor(HEX_Color)
@@ -22,17 +33,17 @@
 %trim binary
 trim(<<>>) -> <<>>;
 trim(Bin = <<C,BinTail/binary>>) ->
-  case ?MODULE:is_whitespace(C) of
-    true -> ?MODULE:trim(BinTail);
-    false -> ?MODULE:trim_tail(Bin)
+  case is_whitespace(C) of
+    true -> trim(BinTail);
+    false -> trim_tail(Bin)
   end.
 
 trim_tail(<<>>) -> <<>>;
 trim_tail(Bin) ->
   Size = erlang:size(Bin) - 1,
   <<BinHead:Size/binary,C>> = Bin,
-  case ?MODULE:is_whitespace(C) of
-    true -> ?MODULE:trim_tail(BinHead);
+  case is_whitespace(C) of
+    true -> trim_tail(BinHead);
     false -> Bin
   end.
 
@@ -46,21 +57,30 @@ is_whitespace(_) -> false.
 %trim list
 trim_l("") -> "";
 trim_l(List=[H|T]) ->
-  case ?MODULE:is_whitespace(H) of
-    true -> ?MODULE:trim_l(T);
-    false -> ?MODULE:trim_tail_l(lists:reverse(List))
+  case is_whitespace(H) of
+    true -> trim_l(T);
+    false -> trim_tail_l(lists:reverse(List))
   end.
 
 trim_tail_l("") -> "";
 trim_tail_l(List=[H|T]) ->
-  case ?MODULE:is_whitespace(H) of
-    true -> ?MODULE:trim_tail_l(T);
+  case is_whitespace(H) of
+    true -> trim_tail_l(T);
     false -> lists:reverse(List)
   end.
 
 
+htmlspecialchars(Bin) when erlang:is_binary(Bin) ->
+  htmlspecialchars(Bin, true);
 htmlspecialchars(String) ->
-  unicode:characters_to_binary( [?MODULE:htmlspecialchars2(X) || X <- String], utf8, latin1).
+  htmlspecialchars(String, true). %% return Binary when true, otherwise return List_String
+
+htmlspecialchars(Bin, Boolean) when erlang:is_binary(Bin) ->
+  htmlspecialchars( unicode:characters_to_list(Bin, utf8), Boolean);
+htmlspecialchars(String, true) -> %% return Binary when true, otherwise return List_String
+  unicode:characters_to_binary( [ htmlspecialchars2(X) || X <- String], utf8); %% , utf8, latin1);
+htmlspecialchars(String, _) ->
+  unicode:characters_to_list( [ htmlspecialchars2(X) || X <- String], utf8). %% , utf8, latin1).
 
 %helper
 % & -> &amp;, " -> &quot;, ' -> &apos;, < -> &lt;, > -> &gt;
@@ -68,445 +88,449 @@ htmlspecialchars2($&) -> "&amp;";
 htmlspecialchars2($") -> "&quot;";
 %htmlspecialchars2($') -> "&apos;";
 htmlspecialchars2($') -> "&#39;";
+htmlspecialchars2($`) -> "&#96;";
 htmlspecialchars2($<) -> "&lt;";
 htmlspecialchars2($>) -> "&gt;";
 htmlspecialchars2($|) -> "&#124;";
-htmlspecialchars2($`) -> "&#96;";
 htmlspecialchars2($\\) -> "\\\\"; %" fix for code "\x -> .." - "malformed hexadecimal character escape"
 htmlspecialchars2(A) -> A.
+%"
 
+
+
+%% todo add try .. catch
 
 % we begin parsing here
 %bb_parser(BB_Code) % list_string
 bb_parser(BB_Code) ->
-  BB_Code3 = unicode:characters_to_list(?MODULE:htmlspecialchars( ?MODULE:trim_l(BB_Code) ), utf8),
-  ?MODULE:bb_scan(BB_Code3, [], text, "").
+  BB_Code3 = htmlspecialchars( trim_l(BB_Code), false), %% List_String
+  %%BB_Code3 = htmlspecialchars(BB_Code, false), %% List_String
+  bb_scan(BB_Code3, [], text, "").
 
 
 % we begin scanning BB_Code
 %bb_scan(BB_Code, Acc_Tree, Active_BB_Element, Active_Text) % list_string, list, atom, list_string
 
 bb_scan("[code]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{code, open}, {Active_BB_Element, Active_Text} |Acc_Tree], code, "");
+  bb_scan(T, [{code, open}, {Active_BB_Element, Active_Text} |Acc_Tree], code, "");
 
 bb_scan("[/code]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{code, close}, {text, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{code, close}, {text, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("\\\\" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =:= code ->
-  ?MODULE:bb_scan(T, Acc_Tree, Active_BB_Element, "\\" ++ Active_Text); %" fix doubled backslash to single
+  bb_scan(T, Acc_Tree, Active_BB_Element, "\\" ++ Active_Text); %" fix doubled backslash to single
 
 bb_scan("[quote]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code ->
-  ?MODULE:bb_scan(T, [{quote, open}, {Active_BB_Element, Active_Text} |Acc_Tree], quote, "");
+  bb_scan(T, [{quote, open}, {Active_BB_Element, Active_Text} |Acc_Tree], quote, "");
 
 bb_scan("[/quote]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code ->
-  ?MODULE:bb_scan(T, [{quote, close}, {text, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{quote, close}, {text, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[b]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{b, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{b, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/b]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{b, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{b, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[i]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{i, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{i, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/i]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{i, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{i, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[u]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{u, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{u, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/u]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{u, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{u, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 
 bb_scan("[s]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{s, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{s, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/s]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{s, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{s, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[sub]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{sub, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{sub, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/sub]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{sub, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{sub, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[sup]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{sup, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{sup, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/sup]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{sup, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{sup, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[left]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{left, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{left, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/left]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{left, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{left, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[center]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{center, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{center, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/center]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{center, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{center, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[right]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{right, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{right, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/right]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{right, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{right, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[justify]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{justify, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{justify, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/justify]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{justify, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{justify, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[table]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{table, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{table, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/table]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{table, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{table, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[tr]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{tr, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{tr, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/tr]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{tr, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{tr, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[td]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{td, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{td, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/td]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{td, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{td, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[rtl]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{rtl, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{rtl, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/rtl]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{rtl, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{rtl, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[ltr]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{ltr, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{ltr, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/ltr]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{ltr, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{ltr, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[ul]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{ul, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{ul, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/ul]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{ul, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{ul, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[ol]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{ol, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{ol, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/ol]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{ol, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{ol, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[li]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{li, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{li, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 bb_scan("[/li]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{li, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{li, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 
 bb_scan("[font=" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], font, "");
+  bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], font, "");
 bb_scan("]" ++ T, Acc_Tree, font, Active_Text) ->
-  ?MODULE:bb_scan(T, [{font, open, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{font, open, Active_Text} |Acc_Tree], text, "");
 bb_scan([H|T], Acc_Tree, font, Active_Text) ->
-  ?MODULE:bb_scan(T, Acc_Tree, font, [H] ++ Active_Text);
+  bb_scan(T, Acc_Tree, font, [H] ++ Active_Text);
 bb_scan("[/font]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{font, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{font, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 
 bb_scan("[size=" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], size, "");
+  bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], size, "");
 bb_scan("]" ++ T, Acc_Tree, size, Active_Text) ->
-  ?MODULE:bb_scan(T, [{size, open, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{size, open, Active_Text} |Acc_Tree], text, "");
 bb_scan([H|T], Acc_Tree, size, Active_Text) ->
-  ?MODULE:bb_scan(T, Acc_Tree, size, [H] ++ Active_Text);
+  bb_scan(T, Acc_Tree, size, [H] ++ Active_Text);
 bb_scan("[/size]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{size, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{size, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 
 bb_scan("[color=" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], color, "");
+  bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], color, "");
 bb_scan("]" ++ T, Acc_Tree, color, Active_Text) ->
-  ?MODULE:bb_scan(T, [{color, open, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{color, open, Active_Text} |Acc_Tree], text, "");
 bb_scan([H|T], Acc_Tree, color, Active_Text) ->
-  ?MODULE:bb_scan(T, Acc_Tree, color, [H] ++ Active_Text);
+  bb_scan(T, Acc_Tree, color, [H] ++ Active_Text);
 bb_scan("[/color]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{color, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{color, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 
 bb_scan("[img]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{img, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{img, open}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 bb_scan("[img" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], img, "");
+  bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], img, "");
 bb_scan("]" ++ T, Acc_Tree, img, Active_Text) ->
-  ?MODULE:bb_scan(T, [{img, open, Active_Text} |Acc_Tree], img_url, "");
+  bb_scan(T, [{img, open, Active_Text} |Acc_Tree], img_url, "");
 bb_scan([H|T], Acc_Tree, img, Active_Text) ->
-  ?MODULE:bb_scan(T, Acc_Tree, img, [H] ++ Active_Text);
+  bb_scan(T, Acc_Tree, img, [H] ++ Active_Text);
 bb_scan([H|T], Acc_Tree, img_url, Active_Text) ->
-  ?MODULE:bb_scan(T, Acc_Tree, img_url, [H] ++ Active_Text);
+  bb_scan(T, Acc_Tree, img_url, [H] ++ Active_Text);
 bb_scan("[/img]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{img, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{img, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 
 bb_scan("[email=" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], email, "");
+  bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], email, "");
 bb_scan("]" ++ T, Acc_Tree, email, Active_Text) ->
-  ?MODULE:bb_scan(T, [{email, open, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{email, open, Active_Text} |Acc_Tree], text, "");
 bb_scan([H|T], Acc_Tree, email, Active_Text) ->
-  ?MODULE:bb_scan(T, Acc_Tree, email, [H] ++ Active_Text);
+  bb_scan(T, Acc_Tree, email, [H] ++ Active_Text);
 bb_scan("[/email]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{email, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{email, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 
 bb_scan("[url=" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], url, "");
+  bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], url, "");
 bb_scan("]" ++ T, Acc_Tree, url, Active_Text) ->
-  ?MODULE:bb_scan(T, [{url, open, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{url, open, Active_Text} |Acc_Tree], text, "");
 bb_scan([H|T], Acc_Tree, url, Active_Text) ->
-  ?MODULE:bb_scan(T, Acc_Tree, url, [H] ++ Active_Text);
+  bb_scan(T, Acc_Tree, url, [H] ++ Active_Text);
 bb_scan("[/url]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{url, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{url, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 
 bb_scan("[youtube]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], youtube_url, "");
+  bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], youtube_url, "");
 bb_scan([H|T], Acc_Tree, youtube_url, Active_Text) ->
-  ?MODULE:bb_scan(T, Acc_Tree, youtube_url, [H] ++ Active_Text);
+  bb_scan(T, Acc_Tree, youtube_url, [H] ++ Active_Text);
 bb_scan("[/youtube]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 
 bb_scan("[hr]" ++ T, Acc_Tree, Active_BB_Element, "") when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{hr} |Acc_Tree], text, "");
+  bb_scan(T, [{hr} |Acc_Tree], text, "");
 
 bb_scan("[hr]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  ?MODULE:bb_scan(T, [{hr}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{hr}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 % whitespace symbols
 bb_scan("\r\n" ++ T, Acc_Tree, Active_BB_Element, "") when Active_BB_Element =/= code ->
-  ?MODULE:bb_scan(T, [{br} |Acc_Tree], text, "");
+  bb_scan(T, [{br} |Acc_Tree], text, "");
   
 bb_scan("\r\n" ++ T, Acc_Tree, quote, Active_Text) ->
-  ?MODULE:bb_scan(T, [{br}, {text, Active_Text} |Acc_Tree], quote, "");
+  bb_scan(T, [{br}, {text, Active_Text} |Acc_Tree], quote, "");
   
 bb_scan("\r\n" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code ->
-  ?MODULE:bb_scan(T, [{br}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{br}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
   
 bb_scan("\n" ++ T, Acc_Tree, Active_BB_Element, "") when Active_BB_Element =/= code ->
-  ?MODULE:bb_scan(T, [{br} |Acc_Tree], text, "");
+  bb_scan(T, [{br} |Acc_Tree], text, "");
 
 bb_scan("\n" ++ T, Acc_Tree, quote, Active_Text) ->
-  ?MODULE:bb_scan(T, [{br}, {text, Active_Text} |Acc_Tree], quote, "");
+  bb_scan(T, [{br}, {text, Active_Text} |Acc_Tree], quote, "");
 
 bb_scan("\n" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code ->
-  ?MODULE:bb_scan(T, [{br}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
+  bb_scan(T, [{br}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 % smilies
 
 bb_scan(":)" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 1} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 1}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 1} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 1}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":angel:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 2} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 2}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 2} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 2}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":angry:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 3} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 3}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 3} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 3}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan("8-)" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 4} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 4}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 4} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 4}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":&#39;(" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 5} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 5}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 5} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 5}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":ermm:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 6} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 6}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 6} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 6}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":D" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 7} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 7}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 7} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 7}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan("&lt;3" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 8} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 8}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 8} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 8}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":(" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 9} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 9}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 9} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 9}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":O" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 10} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 10}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 10} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 10}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":P" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 11} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 11}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 11} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 11}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(";)" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 12} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 12}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 12} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 12}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":alien:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 13} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 13}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 13} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 13}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":blink:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 14} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 14}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 14} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 14}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":blush:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 15} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 15}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 15} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 15}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":cheerful:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 16} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 16}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 16} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 16}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":devil:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 17} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 17}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 17} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 17}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":dizzy:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 18} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 18}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 18} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 18}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":getlost:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 19} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 19}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 19} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 19}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":happy:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 20} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 20}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 20} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 20}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":kissing:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 21} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 21}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 21} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 21}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":ninja:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 22} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 22}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 22} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 22}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":pinch:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 23} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 23}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 23} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 23}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":pouty:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 24} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 24}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 24} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 24}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":sick:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 25} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 25}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 25} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 25}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":sideways:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 26} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 26}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 26} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 26}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":silly:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 27} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 27}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 27} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 27}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":sleeping:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 28} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 28}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 28} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 28}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":unsure:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 29} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 29}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 29} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 29}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":woot:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 30} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 30}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 30} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 30}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 bb_scan(":wassat:" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   case Active_Text of
-    "" -> ?MODULE:bb_scan(T, [{smile, 31} |Acc_Tree], text, "");
-    _ -> ?MODULE:bb_scan(T, [{smile, 31}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
+    "" -> bb_scan(T, [{smile, 31} |Acc_Tree], text, "");
+    _ -> bb_scan(T, [{smile, 31}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "")
   end;
 
 
 % all other
 bb_scan([H|T], Acc_Tree, Active_BB_Element, Active_Text) ->
   %io:format("~tp~n",[T]),
-  ?MODULE:bb_scan(T, Acc_Tree, Active_BB_Element, [H] ++ Active_Text);
+  bb_scan(T, Acc_Tree, Active_BB_Element, [H] ++ Active_Text);
 
 % happy end :D
 bb_scan([], Acc_Tree, Active_BB_Element, Active_Text) ->
-  %io:format("~tp~n",["333555"]),
   %io:format("~tp~n",[[{Active_BB_Element, Active_Text}|Acc_Tree]]),
-  ?MODULE:bb_convert([{Active_BB_Element, Active_Text} |Acc_Tree], []).
+  bb_convert([{Active_BB_Element, Active_Text} |Acc_Tree], []).
 
 
 % we end our transform here -- Tree to HTML
@@ -581,140 +605,140 @@ bb_scan([], Acc_Tree, Active_BB_Element, Active_Text) ->
 
 %bb_convert(Tree, Acc)
 bb_convert([{text, ""}|T], Acc) ->
-  ?MODULE:bb_convert(T, Acc);
+  bb_convert(T, Acc);
 
 bb_convert([{text, A}|T], Acc) ->
   %io:format("~tp~n",[T]),
   %io:format("~tp~n",[lists:reverse(A)]),
   %io:format("~tp~n",[Acc]),
   
-  ?MODULE:bb_convert(T, [lists:reverse(A) |Acc]);
+  bb_convert(T, [lists:reverse(A) |Acc]);
 
 bb_convert([{code, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<pre class=\"prettyprint\">">> |Acc]);
+  bb_convert(T, [ <<"<pre class=\"prettyprint\">">> |Acc]);
 
 bb_convert([{code, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</pre>">> |Acc]);
+  bb_convert(T, [ <<"</pre>">> |Acc]);
 
 bb_convert([{quote, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<blockquote>">> |Acc]);
+  bb_convert(T, [ <<"<blockquote>">> |Acc]);
 
 bb_convert([{quote, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</blockquote>">> |Acc]);
+  bb_convert(T, [ <<"</blockquote>">> |Acc]);
 
 bb_convert([{b, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<b>">> |Acc]);
+  bb_convert(T, [ <<"<b>">> |Acc]);
 
 bb_convert([{b, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</b>">> |Acc]);
+  bb_convert(T, [ <<"</b>">> |Acc]);
 
 bb_convert([{i, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<i>">> |Acc]);
+  bb_convert(T, [ <<"<i>">> |Acc]);
 
 bb_convert([{i, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</i>">> |Acc]);
+  bb_convert(T, [ <<"</i>">> |Acc]);
 
 bb_convert([{u, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<u>">> |Acc]);
+  bb_convert(T, [ <<"<u>">> |Acc]);
 
 bb_convert([{u, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</u>">> |Acc]);
+  bb_convert(T, [ <<"</u>">> |Acc]);
 
 bb_convert([{s, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<s>">> |Acc]);
+  bb_convert(T, [ <<"<s>">> |Acc]);
 
 bb_convert([{s, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</s>">> |Acc]);
+  bb_convert(T, [ <<"</s>">> |Acc]);
 
 bb_convert([{sub, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<sub>">> |Acc]);
+  bb_convert(T, [ <<"<sub>">> |Acc]);
 
 bb_convert([{sub, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</sub>">> |Acc]);
+  bb_convert(T, [ <<"</sub>">> |Acc]);
 
 bb_convert([{sup, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<sup>">> |Acc]);
+  bb_convert(T, [ <<"<sup>">> |Acc]);
 
 bb_convert([{sup, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</sup>">> |Acc]);
+  bb_convert(T, [ <<"</sup>">> |Acc]);
 
 bb_convert([{left, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<div class=\"left\">">> |Acc]);
+  bb_convert(T, [ <<"<div class=\"left\">">> |Acc]);
 
 bb_convert([{left, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</div>">> |Acc]);
+  bb_convert(T, [ <<"</div>">> |Acc]);
 
 bb_convert([{center, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<div class=\"center\">">> |Acc]);
+  bb_convert(T, [ <<"<div class=\"center\">">> |Acc]);
 
 bb_convert([{center, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</div>">> |Acc]);
+  bb_convert(T, [ <<"</div>">> |Acc]);
 
 bb_convert([{right, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<div class=\"right\">">> |Acc]);
+  bb_convert(T, [ <<"<div class=\"right\">">> |Acc]);
 
 bb_convert([{right, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</div>">> |Acc]);
+  bb_convert(T, [ <<"</div>">> |Acc]);
 
 bb_convert([{justify, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<div class=\"justify\">">> |Acc]);
+  bb_convert(T, [ <<"<div class=\"justify\">">> |Acc]);
 
 bb_convert([{justify, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</div>">> |Acc]);
+  bb_convert(T, [ <<"</div>">> |Acc]);
 
 bb_convert([{table, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<table>">> |Acc]);
+  bb_convert(T, [ <<"<table>">> |Acc]);
 
 bb_convert([{table, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</table>">> |Acc]);
+  bb_convert(T, [ <<"</table>">> |Acc]);
 
 bb_convert([{tr, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<tr>">> |Acc]);
+  bb_convert(T, [ <<"<tr>">> |Acc]);
 
 bb_convert([{tr, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</tr>">> |Acc]);
+  bb_convert(T, [ <<"</tr>">> |Acc]);
 
 bb_convert([{td, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<td>">> |Acc]);
+  bb_convert(T, [ <<"<td>">> |Acc]);
 
 bb_convert([{td, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</td>">> |Acc]);
+  bb_convert(T, [ <<"</td>">> |Acc]);
 
 bb_convert([{hr}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<hr>">> |Acc]);
+  bb_convert(T, [ <<"<hr>">> |Acc]);
 
 bb_convert([{br}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<br>">> |Acc]);
+  bb_convert(T, [ <<"<br>">> |Acc]);
 
 bb_convert([{rtl, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<div class=\"rtl\">">> |Acc]);
+  bb_convert(T, [ <<"<div class=\"rtl\">">> |Acc]);
 
 bb_convert([{rtl, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</div>">> |Acc]);
+  bb_convert(T, [ <<"</div>">> |Acc]);
 
 bb_convert([{ltr, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<div class=\"ltr\">">> |Acc]);
+  bb_convert(T, [ <<"<div class=\"ltr\">">> |Acc]);
 
 bb_convert([{ltr, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</div>">> |Acc]);
+  bb_convert(T, [ <<"</div>">> |Acc]);
 
 bb_convert([{ul, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<ul>">> |Acc]);
+  bb_convert(T, [ <<"<ul>">> |Acc]);
 
 bb_convert([{ul, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</ul>">> |Acc]);
+  bb_convert(T, [ <<"</ul>">> |Acc]);
 
 bb_convert([{ol, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<ol>">> |Acc]);
+  bb_convert(T, [ <<"<ol>">> |Acc]);
 
 bb_convert([{ol, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</ol>">> |Acc]);
+  bb_convert(T, [ <<"</ol>">> |Acc]);
 
 bb_convert([{li, open}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"<li>">> |Acc]);
+  bb_convert(T, [ <<"<li>">> |Acc]);
 
 bb_convert([{li, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</li>">> |Acc]);
+  bb_convert(T, [ <<"</li>">> |Acc]);
 
 
 % {img, open}
@@ -728,53 +752,52 @@ bb_convert([{img, close}|T], Acc) ->
   %io:format("~tp~n",[H3]),
   %io:format("~tp~n",[H2]),
   %io:format("~tp~n",["we in img 2"]),
-  case ?MODULE:bb_convert2_img(H2, H3) of
+  case bb_convert2_img(H2, H3) of
     {ok, Z} ->
-      ?MODULE:bb_convert(T3, [ Z |Acc]);
-    _ ->
-      % err
-      ?MODULE:bb_convert(T, Acc)
+      bb_convert(T3, [ Z |Acc]);
+    _ -> % err
+      bb_convert(T, Acc)
   end;
 
 
 bb_convert([{font, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</span>">> |Acc]);
+  bb_convert(T, [ <<"</span>">> |Acc]);
 
 bb_convert([{font, open, Params}|T], Acc) ->
   [_H|Params2] = Params,
-  Z = [ <<"<span class=\"bbfont_">>, ?MODULE:getbbfont( lists:reverse(Params2) ), <<"\">">> ],
-  ?MODULE:bb_convert(T, [ Z |Acc]);
+  Z = [ <<"<span class=\"bbfont_">>, getbbfont( lists:reverse(Params2) ), <<"\">">> ],
+  bb_convert(T, [ Z |Acc]);
 
 bb_convert([{size, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</span>">> |Acc]);
+  bb_convert(T, [ <<"</span>">> |Acc]);
 
 bb_convert([{size, open, Params}|T], Acc) ->
   [_H|Params2] = Params,
-  Z = [ <<"<span class=\"bbfontsize_">>, ?MODULE:getbbsize( lists:reverse(Params2) ), <<"\">">> ],
-  ?MODULE:bb_convert(T, [ Z |Acc]);
+  Z = [ <<"<span class=\"bbfontsize_">>, getbbsize( lists:reverse(Params2) ), <<"\">">> ],
+  bb_convert(T, [ Z |Acc]);
 
 bb_convert([{color, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</span>">> |Acc]);
+  bb_convert(T, [ <<"</span>">> |Acc]);
 
 bb_convert([{color, open, Params}|T], Acc) ->
   %[_H|Params2] = Params,
-  Z = [ <<"<span class=\"bbcolor_">>, ?MODULE:getbbcolor( lists:reverse(Params) ), <<"\">">> ],
-  ?MODULE:bb_convert(T, [ Z |Acc]);
+  Z = [ <<"<span class=\"bbcolor_">>, getbbcolor( lists:reverse(Params) ), <<"\">">> ],
+  bb_convert(T, [ Z |Acc]);
 
 bb_convert([{email, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</a>">> |Acc]);
+  bb_convert(T, [ <<"</a>">> |Acc]);
 
 bb_convert([{email, open, Params}|T], Acc) ->
   [_H|Params2] = Params,
   Z = [ <<"<a href=\"mailto:">>, lists:reverse(Params2), <<"\">">> ],
-  ?MODULE:bb_convert(T, [ Z |Acc]);
+  bb_convert(T, [ Z |Acc]);
 
 bb_convert([{url, close}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ <<"</a>">> |Acc]);
+  bb_convert(T, [ <<"</a>">> |Acc]);
 
 bb_convert([{url, open, Params}|T], Acc) ->
   Z = [ <<"<a href=\"">>, lists:reverse(Params), <<"\" target=\"_blank\">">> ],
-  ?MODULE:bb_convert(T, [ Z |Acc]);
+  bb_convert(T, [ Z |Acc]);
 
 bb_convert([{youtube_url, Params}|T], Acc) ->
   % \[youtube\].+?\[/youtube\]
@@ -795,14 +818,11 @@ bb_convert([{youtube_url, Params}|T], Acc) ->
   
   [_H|Params2] = Params,
   Z = [ <<"<iframe width=\"560\" height=\"315\" src=\"https://www.youtube.com/embed/">>, lists:reverse(Params2), <<"\" frameborder=\"0\" gesture=\"media\" allow=\"encrypted-media\" allowfullscreen></iframe>">> ],
-  ?MODULE:bb_convert(T, [ Z |Acc]);
+  bb_convert(T, [ Z |Acc]);
 
 
 bb_convert([{smile, Id}|T], Acc) ->
-  ?MODULE:bb_convert(T, [ ?MODULE:getbbsmile(Id) |Acc]);
-
-%bb_convert([{}|T], Acc) ->
-%  ?MODULE:bb_convert(T, [ |Acc]);
+  bb_convert(T, [ getbbsmile(Id) |Acc]);
 
 % happy end :)
 bb_convert([], Acc) ->
@@ -822,9 +842,9 @@ bb_convert2_img({img_url, Url}, {img, open, Params}) ->
   Params3 = lists:reverse(Params2),
   Url2 = lists:reverse(Url),
   
-  R = ?MODULE:bb_convert3_img(1, re:run(Params3, "^ width=[1-9]{1}[0-9]{0,}$"), Params3, Url2),
+  R = bb_convert3_img(1, re:run(Params3, "^ width=[1-9]{1}[0-9]{0,}$"), Params3, Url2),
   case R of
-    {ok, Z} -> 
+    {ok, _} ->
       R;
     _ ->
       err
@@ -835,7 +855,7 @@ bb_convert2_img(_, _) -> err.
 %bb_convert3_img(Type, ReRun_Result, Params, Url)
 bb_convert3_img(1, nomatch, Params, Url) ->
   % other type, try next
-  ?MODULE:bb_convert3_img(2, re:run(Params, "^ height=[1-9]{1}[0-9]{0,}$"), Params, Url);
+  bb_convert3_img(2, re:run(Params, "^ height=[1-9]{1}[0-9]{0,}$"), Params, Url);
 
 bb_convert3_img(1, _, Params, Url) ->
   % we found
@@ -844,7 +864,7 @@ bb_convert3_img(1, _, Params, Url) ->
 
 bb_convert3_img(2, nomatch, Params, Url) ->
   % other type, try next
-  ?MODULE:bb_convert3_img(3, re:run(Params, "^ width=[1-9]{1}[0-9]{0,} height=[1-9]{1}[0-9]{0,}$"), Params, Url);
+  bb_convert3_img(3, re:run(Params, "^ width=[1-9]{1}[0-9]{0,} height=[1-9]{1}[0-9]{0,}$"), Params, Url);
 
 bb_convert3_img(2, _, Params, Url) ->
   % we found
@@ -853,7 +873,7 @@ bb_convert3_img(2, _, Params, Url) ->
 
 bb_convert3_img(3, nomatch, Params, Url) ->
   % other type, try next
-  ?MODULE:bb_convert3_img(4, re:run(Params, "^=[1-9]{1}[0-9]{0,}x[1-9]{1}[0-9]{0,}$"), Params, Url);
+  bb_convert3_img(4, re:run(Params, "^=[1-9]{1}[0-9]{0,}x[1-9]{1}[0-9]{0,}$"), Params, Url);
 
 bb_convert3_img(3, _, Params, Url) ->
   % we found
@@ -875,129 +895,129 @@ bb_convert3_img(4, _, Params, Url) ->
 
 
 bb_delete(BB_Code) ->
-  BB_Code3 = unicode:characters_to_list(?MODULE:htmlspecialchars( ?MODULE:trim_l(BB_Code) ), utf8),
-  ?MODULE:bb_delete2(BB_Code3, [], "").
+  BB_Code3 = htmlspecialchars( trim_l(BB_Code), false),
+  bb_delete2(BB_Code3, [], "").
 
 %bb_delete2(BB_Code, Active_BBs, Acc) ->
 bb_delete2([], _, Acc) -> lists:reverse(Acc);
-bb_delete2("[code]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/code]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[quote]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/quote]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[b]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/b]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[i]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/i]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[u]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/u]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[s]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/s]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[sub]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/sub]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[sup]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/sup]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[left]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/left]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[center]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/center]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[right]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/right]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[justify]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/justify]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[table]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/table]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[tr]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/tr]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[td]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/td]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[rtl]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/rtl]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[ltr]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/ltr]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[ul]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/ul]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[ol]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/ol]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[li]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/li]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[hr]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":)" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":angel:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":angry:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("8-)" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":&#39;(" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":ermm:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":D" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("&lt;3" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":(" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":0" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":P" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(";)" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":alien:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":blink:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":blush:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":cheerful:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":devil:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":dizzy:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":getlost:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":happy:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":kissing:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":ninja:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":pinch:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":pouty:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":sick:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":sideways:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":silly:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":sleeping:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":unsure:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":woot:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2(":wassat:" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[code]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/code]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[quote]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/quote]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[b]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/b]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[i]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/i]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[u]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/u]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[s]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/s]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[sub]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/sub]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[sup]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/sup]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[left]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/left]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[center]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/center]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[right]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/right]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[justify]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/justify]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[table]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/table]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[tr]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/tr]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[td]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/td]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[rtl]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/rtl]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[ltr]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/ltr]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[ul]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/ul]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[ol]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/ol]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[li]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/li]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[hr]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":)" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":angel:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":angry:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("8-)" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":&#39;(" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":ermm:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":D" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("&lt;3" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":(" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":0" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":P" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(";)" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":alien:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":blink:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":blush:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":cheerful:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":devil:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":dizzy:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":getlost:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":happy:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":kissing:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":ninja:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":pinch:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":pouty:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":sick:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":sideways:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":silly:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":sleeping:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":unsure:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":woot:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2(":wassat:" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
 
-bb_delete2("[/font]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/size]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/color]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/img]" ++ T, [img1|Active_BBs], Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/email]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/url]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-bb_delete2("[/youtube]" ++ T, [youtube|Active_BBs], Acc) -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/font]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/size]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/color]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/img]" ++ T, [img1|Active_BBs], Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/email]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/url]" ++ T, Active_BBs, Acc) -> bb_delete2(T, Active_BBs, Acc);
+bb_delete2("[/youtube]" ++ T, [youtube|Active_BBs], Acc) -> bb_delete2(T, Active_BBs, Acc);
 
-bb_delete2("[font=" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [font|Active_BBs], Acc);
-bb_delete2("[size=" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [size|Active_BBs], Acc);
-bb_delete2("[color=" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [color|Active_BBs], Acc);
-bb_delete2("[img]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [img1|Active_BBs], Acc); % img1 === delete chars while not "[/img]"
-bb_delete2("[img" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [img2|Active_BBs], Acc); % img2 === delete chars while not "]" (beginning img tag ends)
-bb_delete2("[email=" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [email|Active_BBs], Acc);
-bb_delete2("[url=" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [url|Active_BBs], Acc);
-bb_delete2("[youtube]" ++ T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, [youtube|Active_BBs], Acc);
+bb_delete2("[font=" ++ T, Active_BBs, Acc) -> bb_delete2(T, [font|Active_BBs], Acc);
+bb_delete2("[size=" ++ T, Active_BBs, Acc) -> bb_delete2(T, [size|Active_BBs], Acc);
+bb_delete2("[color=" ++ T, Active_BBs, Acc) -> bb_delete2(T, [color|Active_BBs], Acc);
+bb_delete2("[img]" ++ T, Active_BBs, Acc) -> bb_delete2(T, [img1|Active_BBs], Acc); % img1 === delete chars while not "[/img]"
+bb_delete2("[img" ++ T, Active_BBs, Acc) -> bb_delete2(T, [img2|Active_BBs], Acc); % img2 === delete chars while not "]" (beginning img tag ends)
+bb_delete2("[email=" ++ T, Active_BBs, Acc) -> bb_delete2(T, [email|Active_BBs], Acc);
+bb_delete2("[url=" ++ T, Active_BBs, Acc) -> bb_delete2(T, [url|Active_BBs], Acc);
+bb_delete2("[youtube]" ++ T, Active_BBs, Acc) -> bb_delete2(T, [youtube|Active_BBs], Acc);
 
 bb_delete2("]" ++ T, [H|Active_BBs], Acc) when Active_BBs =/= [] ->
   case H of
-    font -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
-    size -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
-    color -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
-    img2 -> ?MODULE:bb_delete2(T, [img1|erlang:tl(Active_BBs)], Acc);
-    email -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
-    url -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
-    youtube -> ?MODULE:bb_delete3(T, Active_BBs, Acc);
-    _ -> ?MODULE:bb_delete2(T, Active_BBs, [H|Acc])
+    font -> bb_delete3(T, Active_BBs, Acc);
+    size -> bb_delete3(T, Active_BBs, Acc);
+    color -> bb_delete3(T, Active_BBs, Acc);
+    img2 -> bb_delete2(T, [img1|erlang:tl(Active_BBs)], Acc);
+    email -> bb_delete3(T, Active_BBs, Acc);
+    url -> bb_delete3(T, Active_BBs, Acc);
+    youtube -> bb_delete3(T, Active_BBs, Acc);
+    _ -> bb_delete2(T, Active_BBs, [H|Acc])
   end;
 
-bb_delete2([H|T], [], Acc) -> ?MODULE:bb_delete2(T, [], [H|Acc]);
+bb_delete2([H|T], [], Acc) -> bb_delete2(T, [], [H|Acc]);
 bb_delete2([H|T], [H2|_]=Active_BBs, Acc) ->
   case H2 of
-    font -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-    size -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-    color -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-    img1 -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-    img2 -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-    email -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-    url -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-    youtube -> ?MODULE:bb_delete2(T, Active_BBs, Acc);
-    _ -> ?MODULE:bb_delete2(T, Active_BBs, [H|Acc])
+    font -> bb_delete2(T, Active_BBs, Acc);
+    size -> bb_delete2(T, Active_BBs, Acc);
+    color -> bb_delete2(T, Active_BBs, Acc);
+    img1 -> bb_delete2(T, Active_BBs, Acc);
+    img2 -> bb_delete2(T, Active_BBs, Acc);
+    email -> bb_delete2(T, Active_BBs, Acc);
+    url -> bb_delete2(T, Active_BBs, Acc);
+    youtube -> bb_delete2(T, Active_BBs, Acc);
+    _ -> bb_delete2(T, Active_BBs, [H|Acc])
   end.
 
-bb_delete3(T, [], Acc) -> ?MODULE:bb_delete2(T, [], Acc);
-bb_delete3(T, Active_BBs, Acc) -> ?MODULE:bb_delete2(T, erlang:tl(Active_BBs), Acc).
+bb_delete3(T, [], Acc) -> bb_delete2(T, [], Acc);
+bb_delete3(T, Active_BBs, Acc) -> bb_delete2(T, erlang:tl(Active_BBs), Acc).
 
 
 %getbbfont(String)
@@ -1119,5 +1139,4 @@ getbbsmile(29) -> <<"<img src=\"/img/emoticons/unsure.png\" alt=\":unsure:\" tit
 getbbsmile(30) -> <<"<img src=\"/img/emoticons/w00t.png\" alt=\":woot:\" title=\":woot:\">">>;
 getbbsmile(31) -> <<"<img src=\"/img/emoticons/wassat.png\" alt=\":wassat:\" title=\":wassat:\">">>;
 getbbsmile(_) -> <<"<img src=\"/img/emoticons/smile.png\" alt=\":)\" title=\":)\">">>.
-
 
