@@ -300,12 +300,12 @@ bb_scan("[/url]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_
   bb_scan(T, [{url, close}, {Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 
+bb_scan("[/youtube]" ++ T, Acc_Tree, youtube_url, Active_Text) ->
+  bb_scan(T, [{youtube_url, Active_Text} |Acc_Tree], text, "");
 bb_scan("[youtube]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
   bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], youtube_url, "");
 bb_scan([H|T], Acc_Tree, youtube_url, Active_Text) ->
   bb_scan(T, Acc_Tree, youtube_url, [H] ++ Active_Text);
-bb_scan("[/youtube]" ++ T, Acc_Tree, Active_BB_Element, Active_Text) when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
-  bb_scan(T, [{Active_BB_Element, Active_Text} |Acc_Tree], text, "");
 
 
 bb_scan("[hr]" ++ T, Acc_Tree, Active_BB_Element, "") when Active_BB_Element =/= code, Active_BB_Element =/= quote ->
@@ -816,8 +816,9 @@ bb_convert([{youtube_url, Params}|T], Acc) ->
   % old code
   %re:replace(TokenChars, "\\[youtube\\](.*?)\\[/youtube\\]", "<iframe width=\"560\" height=\"315\" src=\"https://www.youtube.com/embed/\\1\" frameborder=\"0\" gesture=\"media\" allow=\"encrypted-media\" allowfullscreen></iframe>", [global, dotall, caseless]);
   
-  [_H|Params2] = Params,
-  Z = [ <<"<iframe width=\"560\" height=\"315\" src=\"https://www.youtube.com/embed/">>, lists:reverse(Params2), <<"\" frameborder=\"0\" gesture=\"media\" allow=\"encrypted-media\" allowfullscreen></iframe>">> ],
+  %%[_H|Params2] = Params,
+  %%io:format("820 ~p~n~p~n", [Params, Params2]),
+  Z = [ <<"<iframe width=\"560\" height=\"315\" src=\"https://www.youtube.com/embed/">>, lists:reverse(Params), <<"\" frameborder=\"0\" gesture=\"media\" allow=\"encrypted-media\" allowfullscreen></iframe>">> ],
   bb_convert(T, [ Z |Acc]);
 
 
